@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FPI Flappy Bird | День программиста</title>
+    
+    <meta property="og:title" content="FPI Flappy Bird ">
+    <meta property="og:description" content="Проверь свои навыки дебага! Специальная версия ко Дню программиста от FPI.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://via.placeholder.com/1200x630/1E1E1E/00FF00?text=FPI+Flappy+Bird+Dev+Mode">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #181818;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        #gameWrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        canvas {
+            display: block;
+            background-color: #87CEEB;
+            border-radius: 4px;
+        }
+        .ui-btn {
+            position: absolute;
+            width: 42px;
+            height: 42px;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(4px);
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            transition: transform 0.25s ease, background 0.25s ease;
+        }
+        .ui-btn:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
+        .ui-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: #FFF;
+        }
+        #soundBtn {
+            bottom: 60px;
+            right: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameWrapper">
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="soundBtn" class="ui-btn" onclick="toggleSound()" title="Включить/Выключить звук">
+        <svg id="soundIconOn" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        <svg id="soundIconOff" viewBox="0 0 24 24" style="display:none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('gameWrapper');
+
+    const V_WIDTH = 480;
+    const V_HEIGHT = 640;
+
+    let scale = 1;
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        const availableW = window.innerWidth;
+        const availableH = window.innerHeight;
+        scale = Math.min(availableW / V_WIDTH, availableH / V_HEIGHT);
+        const cssW = Math.floor(V_WIDTH * scale);
+        const cssH = Math.floor(V_HEIGHT * scale);
+        wrapper.style.width = `${cssW}px`;
+        wrapper.style.height = `${cssH}px`;
+        canvas.width = cssW * dpr;
+        canvas.height = cssH * dpr;
+        canvas.style.width = `${cssW}px`;
+        canvas.style.height = `${cssH}px`;
+        ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // === АУДИО ===
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    let isMuted = false;
+
+    function toggleSound() {
+        isMuted = !isMuted;
+        document.getElementById('soundIconOn').style.display = isMuted ? 'none' : 'block';
+        document.getElementById('soundIconOff').style.display = isMuted ? 'block' : 'none';
+        if (!isMuted && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    
+    function playSound(type) {
+        if (isMuted) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        if (type === 'flap') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(350, now);
+            osc.frequency.exponentialRampToValueAtTime(500, now + 0.1);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'score') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.setValueAtTime(1200, now + 0.05);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now); osc.stop(now + 0.15);
+        } else if (type === 'hit') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        } else if (type === 'bonus') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.setValueAtTime(900, now + 0.1);
+            osc.frequency.setValueAtTime(1200, now + 0.2);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'finalBonus') {
+            // Особый звук для финального бонуса до 256
+            const now2 = audioCtx.currentTime;
+            [523, 659, 784, 1047, 1319].forEach((freq, i) => {
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.type = 'sine';
+                o.frequency.setValueAtTime(freq, now2 + i * 0.08);
+                g.gain.setValueAtTime(0.25, now2 + i * 0.08);
+                g.gain.exponentialRampToValueAtTime(0.01, now2 + i * 0.08 + 0.25);
+                o.start(now2 + i * 0.08);
+                o.stop(now2 + i * 0.08 + 0.25);
+            });
+        } else if (type === 'glitch') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(100, now);
+            osc.frequency.linearRampToValueAtTime(800, now + 0.15);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'milestone') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523, now);
+            osc.frequency.setValueAtTime(659, now + 0.1);
+            osc.frequency.setValueAtTime(784, now + 0.2);
+            osc.frequency.setValueAtTime(1047, now + 0.3);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        } else if (type === 'victory') {
+            const notes = [523, 659, 784, 1047, 784, 1047, 1319];
+            notes.forEach((freq, i) => {
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.type = 'sine';
+                o.frequency.setValueAtTime(freq, now + i * 0.12);
+                g.gain.setValueAtTime(0.2, now + i * 0.12);
+                g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.12 + 0.3);
+                o.start(now + i * 0.12);
+                o.stop(now + i * 0.12 + 0.3);
+            });
+        }
+    }
+
+    // === СОСТОЯНИЕ ИГРЫ ===
+    let score = 0;
+    let highScore = 0;
+    try { highScore = parseInt(localStorage.getItem('fpi_highscore')) || 0; } catch(e) {}
+    
+    let isGameOver = false;
+    let isGameStarted = false;
+    let isDevMode = false;
+    let pipeTimer = 0;
+    let screenShake = 0;
+    let currentJoke = "";
+    let pipeCount = 0;
+    let lastModeState = 0;
+    
+    let crossed256 = false;
+    let milestoneParticlesSpawned = false;
+    let victoryConfetti = [];
+    
+    // НОВОЕ: счётчик 1С-столбцов (максимум 3 за игру)
+    let oneCCount = 0;
+    const MAX_ONES = 3;
+
+    const devJokes = [
+        "It's not a bug, it's a feature.",
+        "Segmentation fault (core dumped)",
+        "А ты пробовал выключить и включить?",
+        "Error 404: Skill not found",
+        "Compilation failed.",
+        "Работает? Не трогай!",
+        "Ну, хотя бы не в прод упало.",
+        "SyntaxError: unexpected success",
+        "Git push --force и молись",
+        "undefined is not a function",
+        "NullPointerException в душе",
+        "Stack Overflow не помог",
+        "Компилятор тебя не понял",
+        "В проде всё работало!",
+        "Это фича, а не баг, честно!",
+        "Ты точно не джуниор?",
+        "Мёрж конфликт, как и твоя жизнь",
+        "Docker build failed, как и ты"
+    ];
+
+    const codeClouds = [
+        { text: "print('Hello')", lang: "python", speed: 0.5, y: 50, opacity: 0.7, color: "#FFD700" },
+        { text: "#include <>", lang: "cpp", speed: 0.7, y: 120, opacity: 0.75, color: "#00BFFF" },
+        { text: "Процедура()", lang: "1c", speed: 0.6, y: 200, opacity: 0.8, color: "#FF6347" },
+        { text: "using System;", lang: "csharp", speed: 0.4, y: 280, opacity: 0.7, color: "#9370DB" },
+        { text: "function(){}", lang: "js", speed: 0.8, y: 350, opacity: 0.75, color: "#32CD32" },
+        { text: "public class", lang: "java", speed: 0.5, y: 420, opacity: 0.7, color: "#FF4500" },
+        { text: "SELECT *", lang: "sql", speed: 0.6, y: 90, opacity: 0.8, color: "#00CED1" },
+        { text: "def main():", lang: "python", speed: 0.7, y: 170, opacity: 0.75, color: "#FFD700" },
+        { text: "console.log", lang: "js", speed: 0.5, y: 240, opacity: 0.7, color: "#32CD32" },
+        { text: "int main()", lang: "cpp", speed: 0.6, y: 310, opacity: 0.8, color: "#00BFFF" },
+        { text: "Яндекс.1С", lang: "1c", speed: 0.4, y: 380, opacity: 0.75, color: "#FF6347" },
+        { text: "var x = 42", lang: "csharp", speed: 0.7, y: 460, opacity: 0.7, color: "#9370DB" },
+        { text: "import numpy", lang: "python", speed: 0.6, y: 140, opacity: 0.75, color: "#FFD700" },
+        { text: "cout <<", lang: "cpp", speed: 0.5, y: 220, opacity: 0.7, color: "#00BFFF" },
+        { text: "git commit", lang: "git", speed: 0.8, y: 300, opacity: 0.8, color: "#FF6347" }
+    ];
+
+    let glitchPixels = [];
+    let glitchActive = false;
+    let glitchPhase = 0;
+    let glitchTargetMode = 0;
+
+    function triggerGlitchTransition(targetMode) {
+    glitchActive = true;
+    glitchPhase = 0;
+    glitchTargetMode = targetMode;
+    glitchPixels = [];
+    
+    const EDGE_THICKNESS = 75; // Толщина глитч-рамки по краям
+    const CENTER_X_MIN = EDGE_THICKNESS;
+    const CENTER_X_MAX = V_WIDTH - EDGE_THICKNESS;
+    const CENTER_Y_MIN = EDGE_THICKNESS;
+    const CENTER_Y_MAX = V_HEIGHT - EDGE_THICKNESS;
+    
+    // 500 пикселей, но только по краям
+    for (let i = 0; i < 250; i++) {
+        let px, py;
+        
+        // Случайно выбираем сторону: 0=верх, 1=низ, 2=лево, 3=право
+        const side = Math.floor(Math.random() * 4);
+        
+        if (side === 0) {
+            // Верхняя рамка
+            px = Math.random() * V_WIDTH;
+            py = Math.random() * EDGE_THICKNESS;
+        } else if (side === 1) {
+            // Нижняя рамка
+            px = Math.random() * V_WIDTH;
+            py = V_HEIGHT - Math.random() * EDGE_THICKNESS;
+        } else if (side === 2) {
+            // Левая рамка
+            px = Math.random() * EDGE_THICKNESS;
+            py = Math.random() * V_HEIGHT;
+        } else {
+            // Правая рамка
+            px = V_WIDTH - Math.random() * EDGE_THICKNESS;
+            py = Math.random() * V_HEIGHT;
+        }
+        
+        glitchPixels.push({
+            x: px,
+            y: py,
+            w: Math.random() * 30 + 12,  // Чуть крупнее для заметности
+            h: Math.random() * 30 + 12,
+            color: `hsl(${Math.random() * 360}, 100%, ${Math.random() * 50 + 30}%)`,
+            alpha: 0,
+            targetAlpha: 0.35 + Math.random() * 0.25,
+            delay: Math.random() * 20  // Чуть меньшая задержка для быстрого эффекта
+        });
+    }
+    playSound('glitch');
+}
+
+    const logoImg = new Image();
+    logoImg.src = 'fpi_logo.png';
+
+    let particles = [];
+    function spawnParticle(x, y, text, color) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: -3 - Math.random() * 3,
+            life: 1.0,
+            text: text,
+            color: color || "#00FF00"
+        });
+    }
+
+    function spawnVictoryConfetti() {
+        victoryConfetti = [];
+        for (let i = 0; i < 80; i++) {
+            victoryConfetti.push({
+                x: Math.random() * V_WIDTH,
+                y: -Math.random() * V_HEIGHT,
+                w: Math.random() * 8 + 4,
+                h: Math.random() * 12 + 6,
+                color: `hsl(${Math.random() * 360}, 100%, 60%)`,
+                vx: (Math.random() - 0.5) * 2,
+                vy: Math.random() * 2 + 1,
+                rotation: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 0.2
+            });
+        }
+    }
+
+    function checkMilestone256() {
+        if (!crossed256 && score >= 256) {
+            crossed256 = true;
+            playSound('milestone');
+            
+            if (!milestoneParticlesSpawned) {
+                milestoneParticlesSpawned = true;
+                const messages = ["🎉", "256!", "DEV", "DAY", "★", ""];
+                for (let i = 0; i < 20; i++) {
+                    setTimeout(() => {
+                        const msg = messages[Math.floor(Math.random() * messages.length)];
+                        const px = Math.random() * V_WIDTH;
+                        const py = Math.random() * (V_HEIGHT - 200);
+                        spawnParticle(px, py, msg, `hsl(${Math.random() * 360}, 100%, 60%)`);
+                    }, i * 50);
+                }
+            }
+        }
+    }
+
+    const floor = {
+        h: 64, x: 0, dx: 1.75,
+        draw: function() {
+            const y = V_HEIGHT - this.h;
+            if (isDevMode) {
+                ctx.fillStyle = '#007acc';
+                ctx.fillRect(0, y, V_WIDTH, this.h);
+                ctx.fillStyle = '#FFF';
+                ctx.font = '13px Consolas, monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText(`Ln ${Math.floor(bird.y)}, Col 1  Spaces: 4  UTF-8  FPI-IDE`, 15, y + 26);
+                ctx.strokeStyle = '#005999'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(V_WIDTH, y); ctx.stroke();
+            } else {
+                ctx.fillStyle = '#ded895'; ctx.fillRect(0, y, V_WIDTH, this.h);
+                ctx.fillStyle = '#73bf2e'; ctx.fillRect(0, y, V_WIDTH, 14);
+                ctx.strokeStyle = '#558c22'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(0, y + 14); ctx.lineTo(V_WIDTH, y + 14); ctx.stroke();
+                ctx.strokeStyle = '#cbbe6a'; ctx.lineWidth = 2; ctx.beginPath();
+                for (let i = this.x % 20; i < V_WIDTH; i += 20) {
+                    ctx.moveTo(i, y + 20); ctx.lineTo(i - 10, V_HEIGHT - 6);
+                }
+                ctx.stroke();
+            }
+        },
+        update: function(dtRatio) {
+            if (isGameStarted && !isGameOver) this.x -= this.dx * dtRatio;
+        }
+    };
+
+    const bird = {
+        x: 60, y: 260, w: 32, h: 26, velocity: 0, gravity: 0.38, jump: -7.6,
+        draw: function() {
+            ctx.save();
+            ctx.translate(this.x + this.w / 2, this.y + this.h / 2);
+            let rotation = 0;
+            if (!isGameStarted && !isGameOver) rotation = 0;
+            else if (this.velocity < 0) rotation = -22 * Math.PI / 180;
+            else rotation = Math.min(this.velocity * 4.5, 85) * Math.PI / 180;
+            ctx.rotate(rotation);
+
+            if (isDevMode) {
+                ctx.strokeStyle = '#00FF00'; ctx.lineWidth = 1.6; ctx.fillStyle = '#222';
+                ctx.beginPath(); ctx.ellipse(0, 0, 13, 9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-13, 0); ctx.lineTo(13, 0); ctx.moveTo(0, -9); ctx.lineTo(0, 9); ctx.stroke();
+                ctx.fillStyle = '#00FF00';
+                ctx.beginPath(); ctx.arc(6, -4, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.arc(6, 4, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(8, -4); ctx.lineTo(15, -9); ctx.moveTo(8, 4); ctx.lineTo(15, 9); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-5, -6); ctx.lineTo(-11, -12); ctx.moveTo(-5, 6); ctx.lineTo(-11, 12);
+                ctx.moveTo(4, -6); ctx.lineTo(10, -12); ctx.moveTo(4, 6); ctx.lineTo(10, 12); ctx.stroke();
+            } else {
+                ctx.fillStyle = '#FFD700'; ctx.strokeStyle = '#FF4500'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.ellipse(0, 0, this.w / 2, this.h / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(6, -6, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(8, -6, 2, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#FFA500'; ctx.beginPath(); ctx.moveTo(8, -1); ctx.lineTo(19, 3); ctx.lineTo(8, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#FFF';
+                let wingY = (this.velocity < 0) ? -4 : 4;
+                ctx.beginPath(); ctx.ellipse(-7, wingY, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+        },
+        update: function(dtRatio) {
+            if (!isGameStarted && !isGameOver) {
+                this.y += Math.sin(Date.now() / 180) * 0.45;
+                return;
+            }
+            if (!isGameOver) {
+                this.velocity += this.gravity * dtRatio;
+                this.y += this.velocity * dtRatio;
+                if (this.y <= 0) { this.y = 0; this.velocity = 0; }
+                const groundY = V_HEIGHT - floor.h;
+                if (this.y + this.h >= groundY) { this.y = groundY - this.h; gameOver(); }
+            }
+        },
+        flap: function() { this.velocity = this.jump; playSound('flap'); },
+        reset: function() { this.y = 260; this.velocity = 0; },
+        getRect: function() {
+            return { left: this.x + 4, right: this.x + this.w - 4, top: this.y + 4, bottom: this.y + this.h - 4 };
+        }
+    };
+
+    const pipes = {
+        items: [], gap: 155, w: 58, speed: 2.24,
+        draw: function() {
+            const groundY = V_HEIGHT - floor.h;
+            for (let i = 0; i < this.items.length; i++) {
+                let p = this.items[i];
+                let bottomY = p.top + p.gap;
+                let bottomH = groundY - bottomY;
+                
+                if (p.is1C) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.strokeStyle = '#DC143C';
+                    ctx.lineWidth = 3;
+                    ctx.fillRect(p.x, 0, this.w, p.top);
+                    ctx.strokeRect(p.x, 0, this.w, p.top);
+                    ctx.fillRect(p.x - 4, p.top - 20, this.w + 8, 20);
+                    ctx.strokeRect(p.x - 4, p.top - 20, this.w + 8, 20);
+                    ctx.fillRect(p.x, bottomY, this.w, bottomH);
+                    ctx.strokeRect(p.x, bottomY, this.w, bottomH);
+                    ctx.fillRect(p.x - 4, bottomY, this.w + 8, 20);
+                    ctx.strokeRect(p.x - 4, bottomY, this.w + 8, 20);
+                    
+                    ctx.fillStyle = '#DC143C';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText("1С", p.x + this.w/2, p.top/2);
+                    
+                    // НОВОЕ: разный текст в зависимости от номера 1С
+                    if (p.oneCIndex < 2) {
+                        ctx.fillText("+100", p.x + this.w/2, bottomY + bottomH/2);
+                    } else {
+                        // Третья 1С — финальный бонус
+                        ctx.font = 'bold 14px Arial';
+                        ctx.fillText("до 256", p.x + this.w/2, bottomY + bottomH/2);
+                    }
+                } else if (isDevMode) {
+                    ctx.strokeStyle = '#00FF00'; ctx.lineWidth = 1.8; ctx.setLineDash([5, 5]);
+                    ctx.fillStyle = 'rgba(0, 255, 0, 0.08)';
+                    ctx.strokeRect(p.x, 0, this.w, p.top); ctx.fillRect(p.x, 0, this.w, p.top);
+                    ctx.strokeRect(p.x, bottomY, this.w, bottomH); ctx.fillRect(p.x, bottomY, this.w, bottomH);
+                    ctx.setLineDash([]);
+                } else {
+                    ctx.fillStyle = '#228B22'; ctx.strokeStyle = '#006400'; ctx.lineWidth = 2;
+                    ctx.fillRect(p.x, 0, this.w, p.top); ctx.strokeRect(p.x, 0, this.w, p.top);
+                    ctx.fillRect(p.x - 4, p.top - 20, this.w + 8, 20); ctx.strokeRect(p.x - 4, p.top - 20, this.w + 8, 20);
+                    ctx.fillRect(p.x, bottomY, this.w, bottomH); ctx.strokeRect(p.x, bottomY, this.w, bottomH);
+                    ctx.fillRect(p.x - 4, bottomY, this.w + 8, 20); ctx.strokeRect(p.x - 4, bottomY, this.w + 8, 20);
+                }
+            }
+        },
+        update: function(dtRatio) {
+            if (!isGameStarted || isGameOver) return;
+            pipeTimer += dtRatio;
+            
+            let currentSpeed = this.speed + Math.floor(score / 10) * 0.1575;
+            let currentGap = Math.max(120, this.gap - Math.floor(score / 10) * 1.575);
+
+            if (pipeTimer > 105) {
+                pipeTimer = 0;
+                pipeCount++;
+                const minH = 70;
+                const maxH = (V_HEIGHT - floor.h) - currentGap - minH;
+                const topH = Math.random() * (maxH - minH) + minH;
+                
+                // НОВОЕ: 1С появляется только если:
+                // - это 10-й столбец (pipeCount % 10 === 0)
+                // - ещё не использованы все 3 слота 1С
+                // - игрок ещё не достиг 256
+                const is1C = (pipeCount % 10 === 0) && (oneCCount < MAX_ONES) && (score < 256);
+                
+                const neededMode = Math.floor(pipeCount / 5) % 2;
+                
+                this.items.push({ 
+                    x: V_WIDTH, 
+                    top: topH, 
+                    passed: false, 
+                    gap: currentGap,
+                    is1C: is1C,
+                    oneCIndex: is1C ? oneCCount : -1  // запоминаем номер 1С (0, 1 или 2)
+                });
+                
+                if (is1C) {
+                    oneCCount++;
+                }
+                
+                if (neededMode !== lastModeState) {
+                    triggerGlitchTransition(neededMode);
+                    isDevMode = (neededMode === 1);
+                    lastModeState = neededMode;
+                    document.title = isDevMode ? "FPI [DEV MODE]" : "FPI Flappy Bird | День программиста";
+                }
+            }
+
+            for (let i = this.items.length - 1; i >= 0; i--) {
+                let p = this.items[i];
+                p.x -= currentSpeed * dtRatio;
+                let b = bird.getRect();
+                let pipeLeft = p.x;
+                let pipeRight = p.x + this.w;
+                let topPipeBottom = p.top;
+                let bottomPipeTop = p.top + p.gap;
+
+                if (b.right > pipeLeft && b.left < pipeRight) {
+                    if (b.top < topPipeBottom || b.bottom > bottomPipeTop) gameOver();
+                }
+
+                if (!p.passed && b.left > pipeRight) {
+                    if (p.is1C) {
+                        // НОВОЕ: разный бонус в зависимости от номера 1С
+                        let bonus;
+                        if (p.oneCIndex < 2) {
+                            // Первые две 1С: +100
+                            bonus = 100;
+                            playSound('bonus');
+                            spawnParticle(bird.x, bird.y - 20, "+100", "#FFD700");
+                            spawnParticle(bird.x + 20, bird.y - 30, "1С!", "#DC143C");
+                        } else {
+                            // Третья 1С: добиваем до 256
+                            bonus = Math.max(0, 256 - score);
+                            playSound('finalBonus');
+                            spawnParticle(bird.x, bird.y - 20, `+${bonus}`, "#FFD700");
+                            spawnParticle(bird.x + 20, bird.y - 30, "ФИНАЛ!", "#DC143C");
+                        }
+                        score += bonus;
+                    } else {
+                        score++;
+                        playSound('score');
+                        spawnParticle(bird.x, bird.y - 20, isDevMode ? "</>" : "+1", "#00FF00");
+                    }
+                    p.passed = true;
+                    checkMilestone256();
+                    if (score > highScore) {
+                        highScore = score;
+                        try { localStorage.setItem('fpi_highscore', highScore); } catch(e) {}
+                    }
+                }
+                if (p.x + this.w < 0) this.items.splice(i, 1);
+            }
+        },
+        reset: function() { 
+            this.items = []; 
+            pipeTimer = 0; 
+            pipeCount = 0;
+            lastModeState = 0;
+        }
+    };
+
+    function drawCodeClouds() {
+        const FADE_ZONE = 120;
+        
+        codeClouds.forEach(cloud => {
+            cloud.x = (cloud.x || -200) + cloud.speed;
+            
+            let currentOpacity = cloud.opacity;
+            
+            if (cloud.x < FADE_ZONE) {
+                currentOpacity = cloud.opacity * (cloud.x / FADE_ZONE);
+            }
+            
+            if (cloud.x > V_WIDTH - FADE_ZONE) {
+                currentOpacity = cloud.opacity * ((V_WIDTH - cloud.x) / FADE_ZONE);
+            }
+            
+            if (cloud.x > V_WIDTH + 50) {
+                cloud.x = -200 - Math.random() * 100;
+                cloud.y = Math.random() * (V_HEIGHT - floor.h - 100);
+            }
+            
+            if (currentOpacity <= 0.01) return;
+            
+            ctx.save();
+            ctx.globalAlpha = currentOpacity;
+            ctx.fillStyle = cloud.color || (isDevMode ? '#00FF00' : '#FFFFFF');
+            ctx.font = 'bold 16px Courier New';
+            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(cloud.text, cloud.x, cloud.y);
+            ctx.fillText(cloud.text, cloud.x, cloud.y);
+            ctx.restore();
+        });
+    }
+
+    function drawGlitchPixels() {
+        if (!glitchActive) return;
+        
+        if (glitchPhase === 0) {
+            let allVisible = true;
+            glitchPixels.forEach(p => {
+                if (p.delay > 0) {
+                    p.delay -= 1;
+                    allVisible = false;
+                    return;
+                }
+                if (p.alpha < p.targetAlpha) {
+                    p.alpha += 0.15;
+                    allVisible = false;
+                }
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.alpha;
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+            });
+            ctx.globalAlpha = 1.0;
+            if (allVisible) glitchPhase = 1;
+        } else {
+            let allGone = true;
+            glitchPixels.forEach(p => {
+                if (p.alpha > 0) {
+                    p.alpha -= 0.04;
+                    allGone = false;
+                }
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+            });
+            ctx.globalAlpha = 1.0;
+            if (allGone) {
+                glitchActive = false;
+                glitchPixels = [];
+            }
+        }
+    }
+
+    function drawVictoryConfetti() {
+        if (victoryConfetti.length === 0) return;
+        
+        victoryConfetti.forEach(c => {
+            c.x += c.vx;
+            c.y += c.vy;
+            c.rotation += c.rotSpeed;
+            
+            if (c.y > V_HEIGHT) {
+                c.y = -20;
+                c.x = Math.random() * V_WIDTH;
+            }
+            
+            ctx.save();
+            ctx.translate(c.x, c.y);
+            ctx.rotate(c.rotation);
+            ctx.fillStyle = c.color;
+            ctx.fillRect(-c.w/2, -c.h/2, c.w, c.h);
+            ctx.restore();
+        });
+    }
+
+    function drawBackground() {
+        if (isDevMode) {
+            ctx.fillStyle = '#1E1E1E'; 
+            ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+            
+            ctx.strokeStyle = '#2d2d2d'; 
+            ctx.lineWidth = 1; 
+            ctx.beginPath();
+            for (let x = 0; x < V_WIDTH; x += 36) { 
+                ctx.moveTo(x, 0); 
+                ctx.lineTo(x, V_HEIGHT - floor.h); 
+            }
+            for (let y = 0; y < V_HEIGHT - floor.h; y += 36) { 
+                ctx.moveTo(0, y); 
+                ctx.lineTo(V_WIDTH, y); 
+            }
+            ctx.stroke();
+            
+            if (logoImg.complete) {
+                ctx.globalAlpha = 0.15;
+                ctx.drawImage(logoImg, V_WIDTH - 140, V_HEIGHT - 220, 120, 120);
+                ctx.globalAlpha = 1.0;
+            }
+        } else {
+            ctx.fillStyle = '#87CEEB'; 
+            ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+            
+            drawCodeClouds();
+            
+            if (logoImg.complete) {
+                ctx.globalAlpha = 0.25;
+                ctx.drawImage(logoImg, V_WIDTH - 120, 20, 100, 100);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+    }
+
+    function drawUI() {
+        let scoreLabel = isDevMode ? "Bytes: 0x" + score.toString(16).toUpperCase() : `${score}`;
+        let bestLabel = isDevMode ? "MaxHeap: 0x" + Number(highScore).toString(16).toUpperCase() : `${highScore}`;
+
+        ctx.textAlign = 'center';
+        ctx.font = isDevMode ? "bold 32px Consolas, monospace" : "bold 42px Arial";
+        ctx.fillStyle = isDevMode ? "#00FF00" : "#FFF";
+        ctx.fillText(scoreLabel, V_WIDTH / 2, 60);
+        
+        ctx.font = isDevMode ? "14px Consolas, monospace" : "bold 18px Arial";
+        ctx.fillStyle = isDevMode ? "#888" : "rgba(255,255,255,0.8)";
+        ctx.fillText(`ЛУЧШИЙ: ${bestLabel}`, V_WIDTH / 2, 88);
+
+        if (!isGameStarted && !isGameOver) {
+            drawCenter(isDevMode ? "DEBUGGER READY" : "FPI FLAPPY", -40, isDevMode ? "28px Consolas" : "bold 32px Arial", isDevMode ? "#00FF00" : "#FFF");
+            drawCenter(isDevMode ? "Press SPACE to Run" : "Нажми ПРОБЕЛ или тапни", 8, "16px Arial", "#EEE");
+        } else if (isGameOver) {
+            if (crossed256) {
+                const centerY = (V_HEIGHT - floor.h) / 2;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(40, centerY - 110, V_WIDTH - 80, 220);
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(40, centerY - 110, V_WIDTH - 80, 220);
+                
+                drawCenter("🎉 ПОБЕДА! 🎉", -70, "bold 36px Arial", "#FFD700");
+                drawCenter("HAPPY PROGRAMMER'S DAY!", -30, "bold 22px Arial", "#00FF00");
+                drawCenter(`Ты набрал ${score} очков!`, 10, "bold 20px Arial", "#FFF");
+                drawCenter(`Рекорд: ${highScore}`, 40, "18px Arial", "#AAA");
+                drawCenter("Нажми для новой игры", 75, "16px Arial", "#EEE");
+            } else {
+                drawCenter(isDevMode ? "FATAL EXCEPTION" : "ОШИБКА", -25, isDevMode ? "30px Consolas" : "bold 34px Arial", "#FF3B30");
+                drawCenter(currentJoke, 5, "16px Arial", "#FFF");
+                drawCenter(isDevMode ? "Press SPACE to Rebuild" : "Нажми для рестарта", 35, "15px Arial", "#AAA");
+            }
+        }
+        
+        ctx.textAlign = 'left';
+    }
+
+    function drawCenter(text, yOffset, font, color) {
+        ctx.font = font; 
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillText(text, V_WIDTH / 2 + 1, (V_HEIGHT - floor.h) / 2 + yOffset + 1);
+        ctx.fillStyle = color;
+        ctx.fillText(text, V_WIDTH / 2, (V_HEIGHT - floor.h) / 2 + yOffset);
+    }
+
+    function action() {
+        if (isGameOver) { resetGame(); } 
+        else if (!isGameStarted) { isGameStarted = true; bird.flap(); } 
+        else { bird.flap(); }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') { e.preventDefault(); action(); }
+    });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); action(); }, { passive: false });
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 0) action(); });
+
+    function gameOver() {
+        if (isGameOver) return;
+        isGameOver = true;
+        
+        if (crossed256) {
+            playSound('victory');
+            spawnVictoryConfetti();
+            document.title = "FPI — ПОБЕДА! 🎉";
+        } else {
+            screenShake = 12;
+            currentJoke = devJokes[Math.floor(Math.random() * devJokes.length)];
+            playSound('hit');
+            document.title = "FPI Flappy Bird | День программиста";
+        }
+        
+        isDevMode = false;
+        lastModeState = 0;
+    }
+
+    function resetGame() {
+        bird.reset(); 
+        pipes.reset(); 
+        score = 0;
+        isGameOver = false; 
+        isGameStarted = false;
+        screenShake = 0; 
+        particles = [];
+        victoryConfetti = [];
+        glitchActive = false;
+        glitchPixels = [];
+        
+        crossed256 = false;
+        milestoneParticlesSpawned = false;
+        
+        // НОВОЕ: сбрасываем счётчик 1С
+        oneCCount = 0;
+        
+        isDevMode = false;
+        lastModeState = 0;
+        document.title = "FPI Flappy Bird | День программиста";
+    }
+
+    let lastTime = performance.now();
+    function loop(currentTime) {
+        const delta = (currentTime - lastTime) / 1000;
+        lastTime = currentTime;
+        const dtRatio = Math.min(delta / (1 / 60), 2.5) || 1;
+
+        bird.update(dtRatio);
+        pipes.update(dtRatio);
+        floor.update(dtRatio);
+
+        let shakeX = 0, shakeY = 0;
+        if (screenShake > 0) {
+            shakeX = (Math.random() - 0.5) * screenShake;
+            shakeY = (Math.random() - 0.5) * screenShake;
+            screenShake *= 0.85;
+            if (screenShake < 0.5) screenShake = 0;
+        }
+
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
+        drawBackground();
+        pipes.draw();
+        floor.draw();
+        bird.draw();
+        ctx.restore();
+
+        drawGlitchPixels();
+        drawVictoryConfetti();
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx * dtRatio;
+            p.y += p.vy * dtRatio;
+            p.life -= 0.02 * dtRatio;
+            ctx.font = "bold 20px Arial";
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.textAlign = "center";
+            ctx.fillText(p.text, p.x, p.y);
+            ctx.globalAlpha = 1.0;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        drawUI();
+        requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+</script>
+</body>
+</html>
